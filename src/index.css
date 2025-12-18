@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+/* ================= Satoshi Variable ================= */
+@font-face {
+  font-family: 'Satoshi';
+  src: url('./assets/fonts/Satoshi-Variable.woff2') format('woff2'),
+       url('./assets/fonts/Satoshi-Variable.woff') format('woff');
+  font-weight: 300 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Satoshi';
+  src: url('./assets/fonts/Satoshi-VariableItalic.woff2') format('woff2'),
+       url('./assets/fonts/Satoshi-VariableItalic.woff') format('woff');
+  font-weight: 300 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* Global default */
+body {
+  font-family: 'Satoshi', system-ui, sans-serif;
+}
