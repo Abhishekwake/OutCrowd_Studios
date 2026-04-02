@@ -1,130 +1,445 @@
+import { useEffect, useRef } from "react";
+import gsap from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
+import Lenis from "@studio-freight/lenis";
+import outcrowdLogo from "../assets/OutCrowd.svg";
+
+gsap.registerPlugin(ScrollTrigger);
+
+const MAGNETIC_OFF_SCROLL_PROGRESS = 0.14;
+const MAGNETIC_QUICK = {
+  duration: 0.28,
+  ease: "power3.out",
+  overwrite: "auto",
+};
+
+function useMagneticCardX({
+  cardListenerRef,
+  cardFollowRef,
+  floatingRef,
+  scrollProgressRef,
+}) {
+  const xToRef = useRef(null);
+
+  useEffect(() => {
+    const listener = cardListenerRef.current;
+    const follow = cardFollowRef.current;
+    const cardEl = floatingRef.current;
+    if (!listener || !follow || !cardEl) return;
+
+    gsap.set(follow, { x: 0, force3D: true });
+
+    xToRef.current = gsap.quickTo(follow, "x", {
+      ...MAGNETIC_QUICK,
+      force3D: true,
+    });
+    const xTo = xToRef.current;
+
+    let rafId = null;
+    let latestClientX = 0;
+
+    const applyMagnetic = () => {
+      if (scrollProgressRef.current > MAGNETIC_OFF_SCROLL_PROGRESS) return;
+
+      const cw = cardEl.offsetWidth;
+      const winWidth = window.innerWidth;
+
+      // How far the card's center can travel to touch the screen edges
+      const travel = (winWidth - cw) / 2;
+
+      if (travel <= 0) {
+        xTo(0);
+        return;
+      }
+
+      // Cursor offset globally clamped to screen width
+      const clampedX = gsap.utils.clamp(0, winWidth, latestClientX);
+
+      // Map global [0 → winWidth] to [-travel → +travel]
+      const x = (clampedX / winWidth) * (travel * 2) - travel;
+      xTo(Math.round(x * 100) / 100);
+    };
+
+    const onMove = (e) => {
+      // Ignore if scrolling down far enough
+      if (scrollProgressRef.current > MAGNETIC_OFF_SCROLL_PROGRESS) return;
+      latestClientX = e.clientX;
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        applyMagnetic();
+      });
+    };
+
+    const onLeave = () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      xTo(0);
+    };
+
+    window.addEventListener("pointermove", onMove, { passive: true });
+    // Keep a transparent listener over the area to handle pointerleave just in case the mouse leaves the document
+    document.addEventListener("pointerleave", onLeave);
+
+    const onResize = () => {
+      if (scrollProgressRef.current <= MAGNETIC_OFF_SCROLL_PROGRESS) {
+        xTo(0);
+      }
+    };
+    window.addEventListener("resize", onResize);
+
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      window.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerleave", onLeave);
+      window.removeEventListener("resize", onResize);
+      xToRef.current = null;
+    };
+  }, [cardFollowRef, floatingRef, scrollProgressRef]);
+
+  return xToRef;
+}
+
 export default function Hero() {
+  const sectionRef = useRef(null);
+  const pinRef = useRef(null);
+  const cardTrackRef = useRef(null);
+  const cardListenerRef = useRef(null);
+  const cardFollowRef = useRef(null);
+  const floatingRef = useRef(null);
+  const imgRef = useRef(null);
+  const headlineRef = useRef(null);
+  const scrollProgressRef = useRef(0);
+
+  const xToRef = useMagneticCardX({
+    cardListenerRef,
+    cardFollowRef,
+    floatingRef,
+    scrollProgressRef,
+  });
+
+  /* ---------- Lenis + GSAP ticker ---------- */
+  useEffect(() => {
+    const lenis = new Lenis({
+      duration: 1.45,
+      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+      lerp: 0.075,
+      smoothWheel: true,
+      wheelMultiplier: 0.85,
+    });
+
+    lenis.on("scroll", ScrollTrigger.update);
+
+    ScrollTrigger.scrollerProxy(document.documentElement, {
+      scrollTop(value) {
+        if (arguments.length) {
+          lenis.scrollTo(value, { immediate: true });
+        }
+        return lenis.scroll;
+      },
+      getBoundingClientRect() {
+        return {
+          top: 0,
+          left: 0,
+          width: window.innerWidth,
+          height: window.innerHeight,
+        };
+      },
+    });
+
+    const onResize = () => {
+      lenis.resize();
+      ScrollTrigger.refresh();
+    };
+    window.addEventListener("resize", onResize);
+
+    const ticker = (time) => {
+      lenis.raf(time * 1000);
+    };
+    gsap.ticker.add(ticker);
+    gsap.ticker.lagSmoothing(0);
+
+    return () => {
+      window.removeEventListener("resize", onResize);
+      gsap.ticker.remove(ticker);
+      lenis.destroy();
+      ScrollTrigger.scrollerProxy(document.documentElement, null);
+    };
+  }, []);
+
+  /* ---------- Scroll: card expands to fullscreen (scrub) ---------- */
+  useEffect(() => {
+    const gridPadding = 32;
+    const gridWidth = `calc(100vw - ${gridPadding * 2}px)`;
+
+    const card = floatingRef.current;
+    const pin = pinRef.current;
+    const section = sectionRef.current;
+    const headline = headlineRef.current;
+    const img = imgRef.current;
+    if (!card || !pin || !section || !headline || !img) return;
+
+    gsap.set(card, {
+      transformOrigin: "50% 50%",
+      width: "680px",
+      height: "380px",
+      borderRadius: 10,
+      opacity: 1,
+      boxShadow:
+        "0 4px 24px rgba(0,0,0,0.04), 0 0 0 1px rgba(0,0,0,0.02)",
+    });
+    gsap.set(img, {
+      scale: 1,
+      filter: "brightness(1) blur(0px)",
+      transformOrigin: "center center",
+    });
+
+
+
+    let lastProgress = 0;
+    const tl = gsap.timeline({
+      scrollTrigger: {
+        trigger: section,
+        start: "top top",
+        end: "+=60%",
+        scrub: true,
+        pin: pin,
+        anticipatePin: 1,
+        onUpdate: (self) => {
+          const p = self.progress;
+          scrollProgressRef.current = p;
+          if (
+            lastProgress <= MAGNETIC_OFF_SCROLL_PROGRESS &&
+            p > MAGNETIC_OFF_SCROLL_PROGRESS &&
+            xToRef.current
+          ) {
+            xToRef.current(0);
+          }
+          lastProgress = p;
+        },
+      },
+    });
+
+    tl.to(
+      card,
+      {
+        width: gridWidth,
+        height: "calc(100vh - 64px)",
+        borderRadius: 10,
+        boxShadow: "0 0 0 0 rgba(0,0,0,0)",
+        ease: "power3.inOut",
+        duration: 1,
+      },
+      0
+    );
+
+    tl.to(
+      headline,
+      {
+        y: -140,
+        opacity: 0,
+        filter: "blur(8px)",
+        ease: "power3.in",
+        duration: 0.55,
+      },
+      0
+    );
+
+    tl.to(
+      img,
+      {
+        scale: 1.06,
+        filter: "brightness(0.92) blur(3px)",
+        ease: "power2.inOut",
+        duration: 0.45,
+      },
+      0
+    );
+
+    tl.to(
+      img,
+      {
+        scale: 1,
+        filter: "brightness(1) blur(0px)",
+        ease: "power3.out",
+        duration: 0.55,
+      },
+      0.45
+    );
+
+    return () => {
+      tl.scrollTrigger?.kill();
+      tl.kill();
+    };
+  }, []);
+
+  /* ---------- Subtle hover scale (listener) ---------- */
+  useEffect(() => {
+    const el = floatingRef.current;
+    const listener = cardListenerRef.current;
+    if (!el || !listener) return;
+
+    const onEnter = () => {
+      gsap.to(el, {
+        scale: 1.015,
+        duration: 0.5,
+        ease: "power3.out",
+        overwrite: "auto",
+        force3D: true,
+      });
+    };
+    const onLeave = () => {
+      gsap.to(el, {
+        scale: 1,
+        duration: 0.55,
+        ease: "power3.out",
+        overwrite: "auto",
+        force3D: true,
+      });
+    };
+
+    listener.addEventListener("pointerenter", onEnter);
+    listener.addEventListener("pointerleave", onLeave);
+    return () => {
+      listener.removeEventListener("pointerenter", onEnter);
+      listener.removeEventListener("pointerleave", onLeave);
+    };
+  }, []);
+
   return (
     <>
-      {/* ================= HEADER ================= */}
-      <header className="fixed inset-x-4 lg:inset-x-8 top-6 z-50">
-        <div className="grid grid-cols-12 items-center gap-8 h-16 px-6">
+      <header className="pointer-events-none [&_a]:pointer-events-auto [&_div]:pointer-events-auto">
+        <div className="overflow-hidden fixed left-4 lg:left-8 right-4 lg:right-8 top-4 lg:top-6 grid grid-cols-12 gap-4 lg:gap-8 z-50 text-black">
 
-          {/* Logo */}
-          <div className="col-span-3 flex items-center">
+          <div className="col-span-6 lg:col-span-3 flex items-center">
             <img
-              src="src/assets/OutCrowd.svg"
+              src={outcrowdLogo}
               alt="Outcrowd Studio"
               className="w-[115px] object-contain"
             />
           </div>
 
-          {/* Navigation */}
-         <nav className="col-span-6 flex justify-center">
-  <ul className="flex gap-12 font-satoshi font-medium text-[16px] text-black">
-    <li className="cursor-pointer hover:opacity-70 transition">Home</li>
-    <li className="cursor-pointer hover:opacity-70 transition">Services</li>
-    <li className="cursor-pointer hover:opacity-70 transition">Work</li>
-    <li className="cursor-pointer hover:opacity-70 transition">About</li>
-  </ul>
-</nav>
-
-          {/* CTA */}
-          <div className="col-span-3 flex justify-end">
-            <button className="h-12 px-8 rounded-full bg-black text-white text-sm font-medium">
-              Start a Project
-            </button>
+          <div className="hidden lg:flex col-span-4 flex-col justify-center">
+            <span className="block overflow-hidden"><div className="block font-medium text-[clamp(16px,1.2vw,20px)]" style={{ transform: "none" }}>Creative Agency</div></span>
+            <span className="block overflow-hidden"><div className="block font-medium text-neutral-500 text-[clamp(16px,1.2vw,20px)]" style={{ transform: "none" }}>Working globally</div></span>
           </div>
+
+          <div className="hidden lg:flex col-span-3 flex-col justify-center">
+            <span className="block overflow-hidden"><div className="block font-medium text-[clamp(16px,1.2vw,20px)]" style={{ transform: "none" }}>Project availability</div></span>
+            <span className="block overflow-hidden"><div className="block font-medium text-neutral-500 text-[clamp(16px,1.2vw,20px)]" style={{ transform: "none" }}>Accepting now</div></span>
+          </div>
+
+          <a href="mailto:contact@outcrowd.com" className="fixed right-4 lg:right-8 top-4 lg:top-6 group cursor-pointer pointer-events-auto" aria-label="Send us an email" role="button" style={{ opacity: 1, transform: "none" }}>
+            <div className="relative">
+              <div className="absolute left-0 top-0 w-12 3xl:w-14 h-12 3xl:h-14 bg-black border border-neutral-800 rounded-full flex items-center justify-center rotate-180 scale-95 group-hover:scale-100 group-hover:rotate-0 group-hover:-translate-x-full transition-transform duration-700 ease-[cubic-bezier(0.34,1.56,0.64,1)] -z-10">
+                <span className="text-lg lg:text-xl 3xl:text-2xl">🤙🏼</span>
+              </div>
+              <div className="flex items-center relative px-5 lg:px-6 h-12 lg:h-14 rounded-full bg-black text-white font-semibold text-[clamp(16px,1.2vw,20px)] border border-neutral-800 z-10">
+                <div className="overflow-hidden h-6 lg:h-7">
+                  <div className="flex flex-col transition-transform duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] group-hover:-translate-y-1/2">
+                    <span className="text-[clamp(16px,1.2vw,20px)] text-white font-semibold mb-1.5 leading-snug">Start a Project</span>
+                    <span className="text-[clamp(16px,1.2vw,20px)] text-white font-semibold mb-1.5 leading-snug">Start a Project</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </a>
 
         </div>
       </header>
 
-      {/* ================= HERO ================= */}
-      <section className="relative min-h-screen overflow-hidden">
+      <section
+        className="relative z-0 min-h-[100svh] flex items-center justify-center overflow-hidden bg-white"
+        aria-label="Following section"
+      >
+        <h2 className="relative z-[1] text-black text-5xl sm:text-6xl font-satoshi font-bold text-center px-6 max-w-5xl">
+          Next Section Content
+        </h2>
+      </section>
 
-        {/* Background Image */}
-       <div
-  className="absolute inset-0 bg-cover"
-  style={{
-    backgroundImage: "url('/hero-bg.jpg')",
-    backgroundPosition: "center 25%",
-  }}
-/>
+      <section
+        ref={sectionRef}
+        className="relative z-10 -mt-[100svh] isolate"
+      >
+        <div
+          ref={pinRef}
+          className="relative h-[100svh] overflow-hidden [contain:layout_paint] bg-white"
+        >
+          <div className="absolute bottom-0 left-0 right-0 h-[35%] bg-gradient-to-t from-white to-transparent z-[1]" />
 
-        {/* Bottom vignette */}
-        <div className="absolute bottom-0 left-0 right-0 h-[37%]
-                bg-gradient-to-t from-black/75 via-black/39 to-transparent" />
+          <div className="relative z-10 h-full grid grid-cols-12 gap-8 px-3 sm:px-8">
+            <div className="col-span-12 flex justify-center pt-28 sm:pt-32">
+              <div
+                ref={cardTrackRef}
+                className="relative w-full max-w-[min(1100px,calc(100vw-1.5rem))] h-[min(440px,52vh)] flex items-center justify-center"
+              >
+                {/*
+                  KEY FIX: listener is on the track (absolute inset-0) so its
+                  getBoundingClientRect() is always stable — it never moves with
+                  the card. We read listener.getBoundingClientRect() inside
+                  applyMagnetic instead of track.getBoundingClientRect() so we
+                  get the correct, non-moving reference frame every frame.
+                */}
+                <div
+                  ref={cardListenerRef}
+                  className="absolute inset-0 z-30 touch-none"
+                  aria-hidden
+                />
+                <div
+                  ref={cardFollowRef}
+                  className="relative z-20 will-change-transform [transform:translateZ(0)]"
+                >
+                  <div
+                    ref={floatingRef}
+                    className="relative mx-auto w-[min(680px,calc(100vw-1.5rem))] h-[min(380px,48vh)] overflow-hidden rounded-[10px] will-change-[width,height,transform,opacity] shadow-sm [backface-visibility:hidden]"
+                  >
+                    <img
+                      ref={imgRef}
+                      src="/hero-center.jpg"
+                      alt=""
+                      className="h-full w-full object-cover pointer-events-none select-none"
+                      draggable={false}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
 
+            <div
+              ref={headlineRef}
+              className="absolute bottom-20 left-0 right-0 px-8 will-change-transform"
+            >
+              <div className="grid grid-cols-12 items-end">
+                <span className="font-medium col-span-3 mb-6 text-[20px] uppercase tracking-widest text-black/90">
+                  A
+                </span>
+                <span className="font-medium col-span-6 mb-6 text-center text-[20px] uppercase tracking-widest text-black/90">
+                  Seriously
+                </span>
+                <span className="font-medium col-span-3 mb-6 text-right text-[20px] uppercase tracking-widest text-black/90">
+                  Good
+                </span>
 
-        {/* Grid Container */}
-        <div className="relative z-10 min-h-screen grid grid-cols-12 gap-8 px-8">
+                <h1 className="col-span-12 text-center whitespace-nowrap font-satoshi font-black uppercase leading-[1] tracking-[-0.06em] text-[#000000] text-[clamp(9rem,12vw,13rem)]">
+                  Visual Engineers
+                </h1>
+              </div>
+            </div>
 
-          {/* Center Floating Image (MOVED UP) */}
-          <div className="col-span-12 lg:col-span-6 lg:col-start-4 flex items-start justify-center pt-32">
-            <div className="w-[668px] h-[375px] overflow-hidden rounded-[8px] shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
-              <img
-                src="/hero-center.jpg"
-                alt="Hero Visual"
-                className="w-full h-full object-cover object-bottom"
-              />
+            <div className="absolute bottom-8 left-8 text-sm text-black">
+              SCROLL
             </div>
           </div>
-{/* Headline + Micro labels (GRID PERFECT) */}
-<div className="absolute bottom-20 left-0 right-0 px-8">
-  <div className="grid grid-cols-12 items-end">
-
-    {/* Micro labels */}
-    <span className="font-satoshi
-        font-normal col-span-3 text-[20px] uppercase tracking-widest text-white/90 mb-6">
-      A
-    </span>
-
-    <span
-  className="
-    col-span-6
-    text-center
-    font-satoshi
-    font-normal
-    text-[20px]
-    uppercase
-    tracking-widest
-    text-white/90
-    mb-6
-  "
->
-  Seriously
-</span>
-
-    <span className="font-satoshi
-        font-normal col-span-3 text-right text-[20px] uppercase tracking-widest text-white/90 mb-6">
-      Good
-    </span>
-
-   <h1
-  className="
-    col-span-12
-    w-full
-    font-satoshi
-    font-black
-    uppercase
-   leading-[1]
-   tracking-[-0.06em]
-    text-[#F5A24A]
-    text-[clamp(9rem,12.5vw,13rem)]
-    text-center
-    whitespace-nowrap
-  "
->
-  Visual Engineers
-</h1>
-
-
-  </div>
-</div>
-
-
-          {/* Scroll Indicator */}
-          <div className="absolute bottom-8 left-8 text-sm text-white/70">
-            Scroll down
-          </div>
-
         </div>
       </section>
     </>
   );
 }
+
+
+
+
+
+
