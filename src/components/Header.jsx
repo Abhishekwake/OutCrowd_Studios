@@ -6,7 +6,12 @@ import outcrowdLogo from "../assets/OutCrowd.svg";
 
 gsap.registerPlugin(ScrollTrigger);
 
-const MAGNETIC_OFF_SCROLL_PROGRESS = 0.14;
+/** Magnetic only in the early part of scroll before expand dominates */
+const MAGNETIC_OFF_SCROLL_PROGRESS = 0.12;
+/** Lifts the card stack from viewport-center up to match pre–fullscreen hero layout (pt-28-ish) */
+const INITIAL_CARD_FOLLOW_Y = -104;
+/** Fullscreen end: soft corners (aligned with premium UI / CTA feel, not sharp 0) */
+const FULLSCREEN_RADIUS = 24;
 const MAGNETIC_QUICK = {
   duration: 0.28,
   ease: "power3.out",
@@ -103,8 +108,8 @@ function useMagneticCardX({
 }
 
 export default function Hero() {
+  /** Single hero shell: trigger + pin target (avoids nested 100vh = blank band) */
   const sectionRef = useRef(null);
-  const pinRef = useRef(null);
   const cardTrackRef = useRef(null);
   const cardListenerRef = useRef(null);
   const cardFollowRef = useRef(null);
@@ -169,20 +174,26 @@ export default function Hero() {
     };
   }, []);
 
-  /* ---------- Scroll: card expands to fullscreen (scrub) ---------- */
+  /* ---------- Scroll: card expands to fullscreen (scrub), stays viewport-centered ---------- */
   useEffect(() => {
-    const gridPadding = 32;
-    const gridWidth = `calc(100vw - ${gridPadding * 2}px)`;
-
     const card = floatingRef.current;
-    const pin = pinRef.current;
     const section = sectionRef.current;
     const headline = headlineRef.current;
     const img = imgRef.current;
-    if (!card || !pin || !section || !headline || !img) return;
+    const follow = cardFollowRef.current;
+    if (!card || !section || !headline || !img || !follow) return;
+
+    gsap.set(follow, { x: 0, xPercent: 0, y: INITIAL_CARD_FOLLOW_Y });
 
     gsap.set(card, {
       transformOrigin: "50% 50%",
+      marginLeft: 0,
+      marginRight: 0,
+      position: "relative",
+      left: "auto",
+      top: "auto",
+      xPercent: 0,
+      yPercent: 0,
       width: "680px",
       height: "380px",
       borderRadius: 10,
@@ -203,9 +214,9 @@ export default function Hero() {
       scrollTrigger: {
         trigger: section,
         start: "top top",
-        end: "+=60%",
-        scrub: true,
-        pin: pin,
+        end: "+=55%",
+        scrub: 1,
+        pin: section,
         anticipatePin: 1,
         onUpdate: (self) => {
           const p = self.progress;
@@ -222,12 +233,23 @@ export default function Hero() {
       },
     });
 
+    /* ----- Phase 1 (scroll ~0–50%): hero → fullscreen ----- */
+    tl.to(
+      follow,
+      {
+        y: 0,
+        ease: "power3.inOut",
+        duration: 1,
+      },
+      0
+    );
+
     tl.to(
       card,
       {
-        width: gridWidth,
-        height: "calc(100vh - 64px)",
-        borderRadius: 10,
+        width: "100vw",
+        height: "100svh",
+        borderRadius: FULLSCREEN_RADIUS,
         boxShadow: "0 0 0 0 rgba(0,0,0,0)",
         ease: "power3.inOut",
         duration: 1,
@@ -351,86 +373,69 @@ export default function Hero() {
       </header>
 
       <section
-        className="relative z-0 min-h-[100svh] flex items-center justify-center overflow-hidden bg-white"
-        aria-label="Following section"
-      >
-        <h2 className="relative z-[1] text-black text-5xl sm:text-6xl font-satoshi font-bold text-center px-6 max-w-5xl">
-          Next Section Content
-        </h2>
-      </section>
-
-      <section
         ref={sectionRef}
-        className="relative z-10 -mt-[100svh] isolate"
+        className="relative z-10 h-[100svh] w-full overflow-hidden [contain:layout_paint] bg-white isolate"
       >
-        <div
-          ref={pinRef}
-          className="relative h-[100svh] overflow-hidden [contain:layout_paint] bg-white"
-        >
-          <div className="absolute bottom-0 left-0 right-0 h-[35%] bg-gradient-to-t from-white to-transparent z-[1]" />
+        <div className="absolute bottom-0 left-0 right-0 h-[0%] bg-gradient-to-t from-white to-transparent z-[1]" />
 
-          <div className="relative z-10 h-full grid grid-cols-12 gap-8 px-3 sm:px-8">
-            <div className="col-span-12 flex justify-center pt-28 sm:pt-32">
-              <div
-                ref={cardTrackRef}
-                className="relative w-full max-w-[min(1100px,calc(100vw-1.5rem))] h-[min(440px,52vh)] flex items-center justify-center"
-              >
-                {/*
-                  KEY FIX: listener is on the track (absolute inset-0) so its
-                  getBoundingClientRect() is always stable — it never moves with
-                  the card. We read listener.getBoundingClientRect() inside
-                  applyMagnetic instead of track.getBoundingClientRect() so we
-                  get the correct, non-moving reference frame every frame.
-                */}
-                <div
-                  ref={cardListenerRef}
-                  className="absolute inset-0 z-30 touch-none"
-                  aria-hidden
-                />
-                <div
-                  ref={cardFollowRef}
-                  className="relative z-20 will-change-transform [transform:translateZ(0)]"
-                >
-                  <div
-                    ref={floatingRef}
-                    className="relative mx-auto w-[min(680px,calc(100vw-1.5rem))] h-[min(380px,48vh)] overflow-hidden rounded-[10px] will-change-[width,height,transform,opacity] shadow-sm [backface-visibility:hidden]"
-                  >
-                    <img
-                      ref={imgRef}
-                      src="/hero-center.jpg"
-                      alt=""
-                      className="h-full w-full object-cover pointer-events-none select-none"
-                      draggable={false}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
+        {/*
+            End state: flex center keeps fullscreen perfectly centered.
+            Initial: cardFollow gets negative y (GSAP) so the small card sits higher like the old pt-28 hero.
+          */}
+        <div className="absolute inset-0 z-[5] flex items-center justify-center pointer-events-none px-4 lg:px-8">
+          <div
+            ref={cardTrackRef}
+            className="pointer-events-auto relative w-full max-w-[min(1100px,calc(100vw-2rem))] min-h-[min(440px,52vh)] flex items-center justify-center"
+          >
             <div
-              ref={headlineRef}
-              className="absolute bottom-20 left-0 right-0 px-8 will-change-transform"
+              ref={cardListenerRef}
+              className="absolute inset-0 z-30 touch-none"
+              aria-hidden
+            />
+            <div
+              ref={cardFollowRef}
+              className="relative z-20 flex shrink-0 will-change-transform [transform:translateZ(0)]"
             >
-              <div className="grid grid-cols-12 items-end">
-                <span className="font-medium col-span-3 mb-6 text-[20px] uppercase tracking-widest text-black/90">
-                  A
-                </span>
-                <span className="font-medium col-span-6 mb-6 text-center text-[20px] uppercase tracking-widest text-black/90">
-                  Seriously
-                </span>
-                <span className="font-medium col-span-3 mb-6 text-right text-[20px] uppercase tracking-widest text-black/90">
-                  Good
-                </span>
-
-                <h1 className="col-span-12 text-center whitespace-nowrap font-satoshi font-black uppercase leading-[1] tracking-[-0.06em] text-[#000000] text-[clamp(9rem,12vw,13rem)]">
-                  Visual Engineers
-                </h1>
+              <div
+                ref={floatingRef}
+                className="relative shrink-0 w-[min(680px,calc(100vw-2rem))] h-[min(380px,48vh)] max-w-[100vw] overflow-hidden rounded-[10px] will-change-[width,height,transform,opacity] shadow-sm [backface-visibility:hidden]"
+              >
+                <img
+                  ref={imgRef}
+                  src="/hero-center.jpg"
+                  alt=""
+                  className="h-full w-full object-cover object-center pointer-events-none select-none"
+                  draggable={false}
+                />
               </div>
             </div>
+          </div>
+        </div>
 
-            <div className="absolute bottom-8 left-8 text-sm text-black">
-              SCROLL
+        <div className="relative z-10 h-full grid grid-cols-12 gap-8 px-4 lg:px-8 pointer-events-none [&_.headline-hit]:pointer-events-auto">
+          <div
+            ref={headlineRef}
+            className="headline-hit col-span-12 absolute bottom-20 left-0 right-0 px-4 lg:px-8 will-change-transform"
+          >
+            <div className="grid grid-cols-12 items-end gap-x-2">
+              <span className="font-medium col-span-3 mb-6 text-[20px] uppercase tracking-widest text-black/90">
+                A
+              </span>
+              <span className="font-medium col-span-6 mb-6 text-center text-[20px] uppercase tracking-widest text-black/90">
+                Seriously
+              </span>
+              <span className="font-medium col-span-3 mb-6 text-right text-[20px] uppercase tracking-widest text-black/90">
+                Good
+              </span>
+
+              <h1 className="col-span-12 text-center font-satoshi font-black uppercase leading-[0.95] tracking-[-0.06em] text-[#000000] text-[clamp(4.5rem,11vw,12rem)] max-w-[min(100%,calc(100vw-2rem))] mx-auto whitespace-normal sm:whitespace-nowrap">
+                Visual Engineers
+              </h1>
             </div>
+          </div>
+
+          <div className="absolute bottom-8 left-4 lg:left-8 text-sm text-black">
+            SCROLL
           </div>
         </div>
       </section>

@@ -56,10 +56,10 @@ export default function About() {
   }, []);
 
   return (
-    <section ref={containerRef} className="relative z-20 w-full min-h-screen bg-white text-black py-24 sm:py-32 flex items-center overflow-hidden">
-      <div ref={wrapperRef} className="grid grid-cols-12 gap-8 lg:gap-16 w-full max-w-[1400px] mx-auto px-6 lg:px-12 items-center">
+    <section ref={containerRef} className="relative z-20 w-full min-h-screen bg-white text-black pt-0 pb-12 sm:pb-16 flex items-center overflow-hidden">
+      <div ref={wrapperRef} className="grid grid-cols-12 gap-8 lg:gap-16 w-full mx-auto px-4 lg:px-8 items-center">
 
-        <div className="col-span-12 lg:col-span-7 flex flex-col justify-center font-satoshi order-2 lg:order-1 pt-12 lg:pt-0">
+        <div className="col-span-12 lg:col-span-7 flex flex-col justify-center font-satoshi order-2 lg:order-1 pt-4 lg:pt-0">
           <h3 className="text-[clamp(1.2rem,1.5vw,1.5rem)] font-bold mb-8 uppercase tracking-[0.1em] text-neutral-400">
             We Are
           </h3>
